@@ -3,37 +3,68 @@
  * 規則：可重複執行（先清空、再種入資料），即使執行多次也不會有資料疊加的狀況。
  * 執行順序：一定要先 npm run migration:run（沒有資料表，就無法種資料）
  */
-const { dataSource } = require('./data-source')
+const Class = require("../entities/Class");
+const Grade = require("../entities/Grade");
+const Student = require("../entities/Student");
+const Subject = require("../entities/Subject");
+const { dataSource } = require("./data-source");
 
 /** 清空：被 FK 指著的表最後刪（GRADE 先刪，CLASS / SUBJECT 最後刪）。
  *  不用 clear()（TRUNCATE 會被 FK 擋）、不用 delete({})（TypeORM 拒絕空條件）。 */
 async function clearAll() {
   const ORDER = [
     // TODO: 按「你的」FK 依賴順序填 entity name（先刪 Grade，再 Student，最後 Class / Subject）
-  ]
+    Grade,
+    Student,
+    Subject,
+    Class,
+  ];
   for (const name of ORDER) {
     if (dataSource.hasMetadata(name)) {
-      await dataSource.createQueryBuilder().delete().from(name).execute()
+      await dataSource.createQueryBuilder().delete().from(name).execute();
     }
   }
 }
 
 async function main() {
-  await dataSource.initialize()
-  await clearAll()
+  await dataSource.initialize();
+  await clearAll();
 
   // ================================================================================
   // TODO：依照任務內容的規格種資料（至少 2 班、2 科目、幾位學生、幾筆成績）
+  const classRepo = dataSource.getRepository("Class");
+  const subjectRepo = dataSource.getRepository("Subject");
+  const studentRepo = dataSource.getRepository("Student");
+  const gradeRepo = dataSource.getRepository("Grade");
   //   1. 先種 CLASS / SUBJECT
+  const classA = await classRepo.save({ name: "三年一班" });
+  const classB = await classRepo.save({ name: "三年二班" });
+
+  const math = await subjectRepo.save({ name: "數學" });
+  const english = await subjectRepo.save({ name: "英文" });
+
   //   2. 再種 STUDENT（記得接上 class）
+  const student1 = await studentRepo.save({ name: "王小明", class: classA });
+  const student2 = await studentRepo.save({ name: "李小華", class: classA });
+  const student3 = await studentRepo.save({ name: "張大偉", class: classB });
+
   //   3. 最後種 GRADE（記得接上 student + subject）
   //      關聯的接法：relation 屬性直接放前面存好的物件（TypeORM 會自動取出 id 填進外鍵），例如：
   //      studentRepo.save({ name: '...', class: 班級物件 })
   //      gradeRepo.save({ score: 95, student: 學生物件, subject: 科目物件 })
+  await gradeRepo.save({ score: 95, student: student1, subject: math });
+  await gradeRepo.save({ score: 88, student: student1, subject: english });
+  await gradeRepo.save({ score: 72, student: student2, subject: math });
+  await gradeRepo.save({ score: 91, student: student2, subject: english });
+  await gradeRepo.save({ score: 85, student: student3, subject: math });
+  await gradeRepo.save({ score: 78, student: student3, subject: english });
   // ================================================================================
 
-  console.log('🌱 seed 完成')
-  await dataSource.destroy()
+  console.log("🌱 seed 完成");
+  await dataSource.destroy();
 }
 
-main().catch((e) => { console.error('seed 失敗：', e.message); process.exit(1) })
+main().catch((e) => {
+  console.error("seed 失敗：", e.message);
+  process.exit(1);
+});
